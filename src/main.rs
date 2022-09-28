@@ -13,9 +13,9 @@ const SPRITE_SIZE: f32 = 50.0;
 const PLATFORM_WIDTH: f32 = 30.0;
 const PLATFORM_HEIGHT: f32 = 20.0;
 
-const BACKGROUND_COLOR: &str = "7E2553";
-const PLAYER_COLOR: &str = "FFA300";
-const PLATFORM_COLOR: &str = "5F574F";
+const BACKGROUND_COLOR: &str = "7FBDF0";
+const PLAYER_COLOR: &str = "2A75BE";
+const PLATFORM_COLOR: &str = "094A6D";
 
 // Components
 #[derive(Component)]
@@ -25,9 +25,9 @@ struct Player {
     player_grounded: bool,
 }
 #[derive(Component)]
-struct Platform;
-#[derive(Component)]
 struct PlayerCamera;
+#[derive(Component)]
+struct Platform;
 
 fn main() {
     App::new()
@@ -37,7 +37,6 @@ fn main() {
             width: WINDOW_WIDTH as f32,
             height: WINDOW_HEIGHT as f32,
             present_mode: PresentMode::Fifo,
-
             ..Default::default()
         })
         .insert_resource(Msaa::default())
