@@ -10,7 +10,7 @@ const WINDOW_HEIGHT: i16 = 540;
 const WINDOW_TITLE: &str = "Doodle Jump";
 
 const SPRITE_SIZE: f32 = 50.0;
-const PLATFORM_WIDTH: f32 = 30.0;
+const PLATFORM_WIDTH: f32 = 120.0;
 const PLATFORM_HEIGHT: f32 = 20.0;
 
 const BACKGROUND_COLOR: &str = "7FBDF0";
@@ -25,7 +25,9 @@ struct Player {
     player_grounded: bool,
 }
 #[derive(Component)]
-struct PlayerCamera;
+struct PlayerCamera {
+    follow_speed: f32,
+}
 #[derive(Component)]
 struct Platform;
 
@@ -49,7 +51,7 @@ fn main() {
         .add_startup_system(spawn_world_system)
         // Staged Systems
         .add_system(player_movement_system)
-        .add_system(camera_follow_system)
+        .add_system(player_camera_follow_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_ground_detection_system)
         .add_system(close_on_esc)
         // Run
@@ -66,7 +68,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
         .insert_bundle(TransformBundle::from_transform(Transform::from_xyz(
             0.0, 0.0, 1.0,
         )))
-        .insert(PlayerCamera);
+        .insert(PlayerCamera { follow_speed: 5.0 });
 
     // Spawn Player
     commands
@@ -89,6 +91,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
             jump_force: 150.0,
             player_grounded: false,
         });
+
     // Spawn Initial Platform
     commands
         .spawn()
@@ -108,6 +111,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
         ))
         .insert(Platform);
 }
+
 fn player_movement_system(
     keyboard_input: Res<Input<KeyCode>>,
     mut player_query: Query<((&mut Player, &mut Velocity), With<Player>)>,
@@ -126,25 +130,29 @@ fn player_movement_system(
         player_input_dir /= player_input_dir.length();
     }
 
-    // Apply Force
+    // Apply Forces
     player.1.linvel.x = player_input_dir.x * player.0.movement_speed;
     if player.0.player_grounded == true {
         player.1.linvel.y = player.0.jump_force;
     }
 }
 
-fn camera_follow_system(
+fn player_camera_follow_system(
     player_query: Query<((&Transform, &Player), With<Player>)>,
     mut camera_query: Query<(&mut Transform, &PlayerCamera), (With<PlayerCamera>, Without<Player>)>,
     time: Res<Time>,
 ) {
+    // Get player transform and camera transform
+    // We also need camera object, but not player object
     let (player_transform, _player_object) = player_query.single();
-    let (mut camera_transform, _camera_object) = camera_query.single_mut();
+    let (mut camera_transform, camera_object) = camera_query.single_mut();
 
+    // We only need to follow the y-position
     let follow_pos: Vec3 = Vec3::new(0.0, player_transform.0.translation.y, 1.0);
-    camera_transform.translation = camera_transform
-        .translation
-        .lerp(follow_pos, time.delta_seconds() * 5.0);
+    camera_transform.translation = camera_transform.translation.lerp(
+        follow_pos,
+        time.delta_seconds() * camera_object.follow_speed,
+    );
 }
 
 fn player_ground_detection_system(
@@ -152,11 +160,13 @@ fn player_ground_detection_system(
     mut player_query: Query<((Entity, &mut Player), With<Player>)>,
     platform_query: Query<(Entity, &Platform), With<Platform>>,
 ) {
+    // Rapier physics requires a reference to the entity itself for collsiion detection
+    // We need grab the entity from the query- we don't need the player object
     let (mut player_entity, _player_object) = player_query.single_mut();
 
-    // We should only check collision type if we're already colliding
     for collision_event in collision_events.iter() {
         for (platform_entity, _platform_object) in platform_query.iter() {
+            // We should only check collision type if we're already colliding
             if *collision_event
                 == CollisionEvent::Started(
                     player_entity.0,
