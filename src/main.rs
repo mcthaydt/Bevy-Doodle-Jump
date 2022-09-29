@@ -3,6 +3,7 @@ use bevy::{
     window::{close_on_esc, PresentMode},
 };
 use bevy_rapier2d::{prelude::*, rapier::prelude::CollisionEventFlags};
+use rand::Rng;
 
 // Game Constants
 const WINDOW_WIDTH: i16 = 960;
@@ -88,7 +89,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
         .insert(LockedAxes::ROTATION_LOCKED)
         .insert(Player {
             movement_speed: 300.0,
-            jump_force: 150.0,
+            jump_force: 200.0,
             player_grounded: false,
         });
 
@@ -110,6 +111,35 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
             PLATFORM_HEIGHT / 2.0,
         ))
         .insert(Platform);
+
+    // Spawn Additional Platforms
+    let mut rng = rand::thread_rng();
+    for index in 1..50 {
+        commands
+            .spawn()
+            .insert_bundle(SpriteBundle {
+                sprite: Sprite {
+                    color: Color::hex(PLATFORM_COLOR).unwrap(),
+                    custom_size: Some(Vec2::new(PLATFORM_WIDTH, PLATFORM_HEIGHT)),
+                    ..Default::default()
+                },
+                transform: Transform::from_xyz(
+                    rng.gen_range(
+                        -(WINDOW_WIDTH as f32 / 2.0 - PLATFORM_WIDTH as f32)
+                            ..(WINDOW_WIDTH as f32 / 2.0 - PLATFORM_WIDTH as f32),
+                    ),
+                    -(WINDOW_HEIGHT as f32 / 4.0) + (WINDOW_HEIGHT as f32) / 4.2 * index as f32,
+                    0.0,
+                ),
+                ..Default::default()
+            })
+            .insert(RigidBody::Fixed)
+            .insert(Collider::cuboid(
+                PLATFORM_WIDTH / 2.0,
+                PLATFORM_HEIGHT / 2.0,
+            ))
+            .insert(Platform);
+    }
 }
 
 fn player_movement_system(
