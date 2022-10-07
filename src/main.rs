@@ -54,6 +54,7 @@ fn main() {
         .add_system(player_movement_system)
         .add_system(player_camera_follow_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_ground_detection_system)
+        .add_system_to_stage(CoreStage::PostUpdate, screen_looping_system)
         .add_system(close_on_esc)
         // Run
         .run();
@@ -113,6 +114,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
         .insert(Platform);
 
     // Spawn Additional Platforms
+    // THIS IS BROKEN ALGO. WE'LL FIX IT TOMORROW
     let mut rng = rand::thread_rng();
     for index in 1..50 {
         commands
@@ -215,5 +217,19 @@ fn player_ground_detection_system(
                 player_entity.1.player_grounded = false;
             }
         }
+    }
+}
+
+fn screen_looping_system(mut player_query: Query<((&mut Transform, &Player), With<Player>)>) {
+    // Get Looping Object
+    let (mut player_transform, _player_object) = player_query.single_mut();
+
+    // Snap Transform to the Opposite Side of Screen
+    // 0 is center, so WINDOW / 2.0 is the actual edge
+    // The bonus SPRITE_SIDE / 2.0 is just padding
+    if player_transform.0.translation.x > WINDOW_WIDTH as f32 / 2.0 + SPRITE_SIZE / 2.0 as f32 {
+        player_transform.0.translation.x = -(WINDOW_WIDTH as f32 / 2.0) + SPRITE_SIZE * 1.2;
+    } else if player_transform.0.translation.x < -(WINDOW_WIDTH as f32 / 2.0) {
+        player_transform.0.translation.x = WINDOW_WIDTH as f32 / 2.0 + SPRITE_SIZE / 2.0 as f32;
     }
 }
