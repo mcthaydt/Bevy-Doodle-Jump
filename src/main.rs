@@ -23,7 +23,7 @@ const PLATFORM_COLOR: &str = "094A6D";
 struct Player {
     movement_speed: f32,
     jump_force: f32,
-    player_grounded: bool,
+    player_colliding: bool,
 }
 #[derive(Component)]
 struct PlayerCamera {
@@ -46,22 +46,22 @@ fn main() {
         .insert_resource(ClearColor(Color::hex(BACKGROUND_COLOR).unwrap()))
         // Plugins
         .add_plugins(DefaultPlugins)
-        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(250.0))
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(350.0))
         // .add_plugin(RapierDebugRenderPlugin::default())
         // Startup Systems
         .add_startup_system(spawn_world_system)
         // Staged Systems
         .add_system(player_movement_system)
         .add_system(player_camera_follow_system)
-        .add_system_to_stage(CoreStage::PostUpdate, player_ground_detection_system)
-        .add_system_to_stage(CoreStage::PostUpdate, screen_looping_system)
+        .add_system_to_stage(CoreStage::PostUpdate, player_collision_detection_system)
+        .add_system_to_stage(CoreStage::PostUpdate, player_screen_looping_system)
         .add_system(close_on_esc)
         // Run
         .run();
 }
 fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierConfiguration>) {
     // Init. World Settings
-    rapier_config.gravity = Vec2::new(0.0, -150.0);
+    rapier_config.gravity = Vec2::new(0.0, -220.0);
 
     // Spawn Camera
     commands
@@ -91,7 +91,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
         .insert(Player {
             movement_speed: 300.0,
             jump_force: 200.0,
-            player_grounded: false,
+            player_colliding: false,
         });
 
     // Spawn Initial Platform
@@ -164,8 +164,15 @@ fn player_movement_system(
 
     // Apply Forces
     player.1.linvel.x = player_input_dir.x * player.0.movement_speed;
-    if player.0.player_grounded == true {
+    if player.0.player_colliding == true {
         player.1.linvel.y = player.0.jump_force;
+    }
+
+    // Fast Fall
+    let down = keyboard_input.pressed(KeyCode::S) || keyboard_input.pressed(KeyCode::Down);
+
+    if down {
+        player.1.linvel.y = -player.0.jump_force * 3.0;
     }
 }
 
@@ -187,7 +194,7 @@ fn player_camera_follow_system(
     );
 }
 
-fn player_ground_detection_system(
+fn player_collision_detection_system(
     mut collision_events: EventReader<CollisionEvent>,
     mut player_query: Query<((Entity, &mut Player), With<Player>)>,
     platform_query: Query<(Entity, &Platform), With<Platform>>,
@@ -206,7 +213,7 @@ fn player_ground_detection_system(
                     CollisionEventFlags::from_bits(0).unwrap(),
                 )
             {
-                player_entity.1.player_grounded = true;
+                player_entity.1.player_colliding = true;
             } else if *collision_event
                 == CollisionEvent::Stopped(
                     player_entity.0,
@@ -214,13 +221,15 @@ fn player_ground_detection_system(
                     CollisionEventFlags::from_bits(0).unwrap(),
                 )
             {
-                player_entity.1.player_grounded = false;
+                player_entity.1.player_colliding = false;
             }
         }
     }
 }
 
-fn screen_looping_system(mut player_query: Query<((&mut Transform, &Player), With<Player>)>) {
+fn player_screen_looping_system(
+    mut player_query: Query<((&mut Transform, &Player), With<Player>)>,
+) {
     // Get Looping Object
     let (mut player_transform, _player_object) = player_query.single_mut();
 
