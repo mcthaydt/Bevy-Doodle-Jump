@@ -35,10 +35,9 @@ struct PlayerCamera {
 struct Platform {
     already_collided: bool,
 }
-struct Score(i8);
 #[derive(Component)]
-struct TimeElapsedUI;
-struct TimeElapsedValue(f32);
+struct ScoreUI;
+struct ScoreValue(i8);
 
 fn main() {
     App::new()
@@ -53,8 +52,7 @@ fn main() {
         .insert_resource(Msaa::default())
         .insert_resource(ImageSettings::default_nearest())
         .insert_resource(ClearColor(Color::hex(BACKGROUND_COLOR).unwrap()))
-        .insert_resource(TimeElapsedValue(0.0))
-        .insert_resource(Score(0))
+        .insert_resource(ScoreValue(0))
         // Plugins
         .add_plugins(DefaultPlugins)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(350.0))
@@ -65,7 +63,7 @@ fn main() {
         // Staged Systems
         .add_system(player_input_system)
         .add_system(player_camera_follow_system)
-        .add_system(increment_timer_system)
+        .add_system(update_score_system)
         .add_system(player_animation_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_collision_detection_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_screen_looping_system)
@@ -77,7 +75,6 @@ fn main() {
 fn initilizate_window(mut windows: ResMut<Windows>) {
     let window = windows.get_primary_mut().unwrap();
     window.set_cursor_visibility(false);
-    window.set_cursor_lock_mode(true);
 }
 
 fn spawn_world_system(
@@ -120,7 +117,7 @@ fn spawn_world_system(
                 ..default()
             }),
         )
-        .insert(TimeElapsedUI);
+        .insert(ScoreUI);
 
     // Spawn Player
     commands
@@ -259,7 +256,7 @@ fn player_camera_follow_system(
 
 fn player_collision_detection_system(
     mut collision_events: EventReader<CollisionEvent>,
-    mut score: ResMut<Score>,
+    mut score: ResMut<ScoreValue>,
     mut player_query: Query<((Entity, &mut Player), With<Player>)>,
     mut platform_query: Query<(Entity, &mut Platform), With<Platform>>,
 ) {
@@ -311,13 +308,6 @@ fn player_screen_looping_system(
     }
 }
 
-fn increment_timer_system(
-    mut text_query: Query<&mut Text, With<TimeElapsedUI>>,
-    score: Res<Score>,
-) {
-    let mut text = text_query.single_mut();
-    text.sections[0].value = score.0.to_string();
-}
 fn player_animation_system(mut player_query: Query<((&mut Sprite, &Player), With<Player>)>) {
     // Get Player
     let (mut player_sprite, _player_object) = player_query.single_mut();
@@ -328,4 +318,9 @@ fn player_animation_system(mut player_query: Query<((&mut Sprite, &Player), With
     } else {
         player_sprite.0.flip_x = true;
     }
+}
+
+fn update_score_system(mut text_query: Query<&mut Text, With<ScoreUI>>, score: Res<ScoreValue>) {
+    let mut text = text_query.single_mut();
+    text.sections[0].value = score.0.to_string();
 }
