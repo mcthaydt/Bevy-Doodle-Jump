@@ -32,7 +32,10 @@ struct PlayerCamera {
     follow_speed: f32,
 }
 #[derive(Component)]
-struct Platform;
+struct Platform {
+    already_collided: bool,
+}
+struct Score(i8);
 #[derive(Component)]
 struct TimeElapsedUI;
 struct TimeElapsedValue(f32);
@@ -51,12 +54,14 @@ fn main() {
         .insert_resource(ImageSettings::default_nearest())
         .insert_resource(ClearColor(Color::hex(BACKGROUND_COLOR).unwrap()))
         .insert_resource(TimeElapsedValue(0.0))
+        .insert_resource(Score(0))
         // Plugins
         .add_plugins(DefaultPlugins)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(350.0))
         // .add_plugin(RapierDebugRenderPlugin::default())
         // Startup Systems
         .add_startup_system(spawn_world_system)
+        .add_startup_system(initilizate_window)
         // Staged Systems
         .add_system(player_input_system)
         .add_system(player_camera_follow_system)
@@ -67,6 +72,11 @@ fn main() {
         .add_system(close_on_esc)
         // Run
         .run();
+}
+fn initilizate_window(mut windows: ResMut<Windows>) {
+    let window = windows.get_primary_mut().unwrap();
+    window.set_cursor_visibility(false);
+    window.set_cursor_lock_mode(true);
 }
 fn spawn_world_system(
     mut commands: Commands,
@@ -150,7 +160,9 @@ fn spawn_world_system(
             PLATFORM_WIDTH / 2.0,
             PLATFORM_HEIGHT / 2.0,
         ))
-        .insert(Platform);
+        .insert(Platform {
+            already_collided: false,
+        });
 
     // Spawn Additional Platforms
     let mut rng = rand::thread_rng();
@@ -179,7 +191,9 @@ fn spawn_world_system(
                 PLATFORM_WIDTH / 2.0,
                 PLATFORM_HEIGHT / 2.0,
             ))
-            .insert(Platform);
+            .insert(Platform {
+                already_collided: false,
+            });
     }
 }
 
@@ -243,15 +257,16 @@ fn player_camera_follow_system(
 
 fn player_collision_detection_system(
     mut collision_events: EventReader<CollisionEvent>,
+    mut score: ResMut<Score>,
     mut player_query: Query<((Entity, &mut Player), With<Player>)>,
-    platform_query: Query<(Entity, &Platform), With<Platform>>,
+    mut platform_query: Query<(Entity, &mut Platform), With<Platform>>,
 ) {
     // Rapier physics requires a reference to the entity itself for collsiion detection
     // We need grab the entity from the query- we don't need the player object
     let (mut player_entity, _player_object) = player_query.single_mut();
 
     for collision_event in collision_events.iter() {
-        for (platform_entity, _platform_object) in platform_query.iter() {
+        for (platform_entity, mut platform_object) in platform_query.iter_mut() {
             // We should only check collision type if we're already colliding
             if *collision_event
                 == CollisionEvent::Started(
@@ -260,7 +275,11 @@ fn player_collision_detection_system(
                     CollisionEventFlags::from_bits(0).unwrap(),
                 )
             {
+                if !platform_object.already_collided == true {
+                    score.0 += 1;
+                }
                 player_entity.1.player_colliding = true;
+                platform_object.already_collided = true;
             } else if *collision_event
                 == CollisionEvent::Stopped(
                     player_entity.0,
@@ -292,14 +311,11 @@ fn player_screen_looping_system(
 
 fn increment_timer_system(
     mut text_query: Query<&mut Text, With<TimeElapsedUI>>,
-    mut time_elapsed_value: ResMut<TimeElapsedValue>,
-    time: Res<Time>,
+    score: Res<Score>,
 ) {
-    let mut timer_text = text_query.single_mut();
-    time_elapsed_value.0 += time.delta_seconds();
-    timer_text.sections[0].value = (time_elapsed_value.0 as i8).to_string();
+    let mut text = text_query.single_mut();
+    text.sections[0].value = score.0.to_string();
 }
-
 fn player_animation_system(mut player_query: Query<((&mut Sprite, &Player), With<Player>)>) {
     // Get Player
     let (mut player_sprite, _player_object) = player_query.single_mut();
