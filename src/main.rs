@@ -1,5 +1,6 @@
 use bevy::{
     prelude::*,
+    render::texture::ImageSettings,
     window::{close_on_esc, PresentMode},
 };
 use bevy_rapier2d::{prelude::*, rapier::prelude::CollisionEventFlags};
@@ -10,13 +11,13 @@ const WINDOW_WIDTH: i16 = 960;
 const WINDOW_HEIGHT: i16 = 540;
 const WINDOW_TITLE: &str = "Doodle Jump";
 
-const SPRITE_SIZE: f32 = 50.0;
-const PLATFORM_WIDTH: f32 = 120.0;
-const PLATFORM_HEIGHT: f32 = 20.0;
+const SPRITE_SIZE: f32 = 32.0 * 1.56;
+const PLATFORM_WIDTH: f32 = 64.0 * 1.875;
+const PLATFORM_HEIGHT: f32 = 32.0 * 0.625;
 
-const BACKGROUND_COLOR: &str = "7FBDF0";
-const PLAYER_COLOR: &str = "2A75BE";
-const PLATFORM_COLOR: &str = "094A6D";
+const BACKGROUND_COLOR: &str = "F8F0E3";
+// const PLAYER_COLOR: &str = "2A75BE";
+const PLATFORM_COLOR: &str = "040a27";
 
 // Components
 #[derive(Component)]
@@ -24,6 +25,7 @@ struct Player {
     movement_speed: f32,
     jump_force: f32,
     player_colliding: bool,
+    facing_right: bool,
 }
 #[derive(Component)]
 struct PlayerCamera {
@@ -31,6 +33,9 @@ struct PlayerCamera {
 }
 #[derive(Component)]
 struct Platform;
+#[derive(Component)]
+struct TimeElapsedUI;
+struct TimeElapsedValue(f32);
 
 fn main() {
     App::new()
@@ -43,7 +48,9 @@ fn main() {
             ..Default::default()
         })
         .insert_resource(Msaa::default())
+        .insert_resource(ImageSettings::default_nearest())
         .insert_resource(ClearColor(Color::hex(BACKGROUND_COLOR).unwrap()))
+        .insert_resource(TimeElapsedValue(0.0))
         // Plugins
         .add_plugins(DefaultPlugins)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(350.0))
@@ -51,15 +58,21 @@ fn main() {
         // Startup Systems
         .add_startup_system(spawn_world_system)
         // Staged Systems
-        .add_system(player_movement_system)
+        .add_system(player_input_system)
         .add_system(player_camera_follow_system)
+        .add_system(increment_timer_system)
+        .add_system(player_animation_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_collision_detection_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_screen_looping_system)
         .add_system(close_on_esc)
         // Run
         .run();
 }
-fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierConfiguration>) {
+fn spawn_world_system(
+    mut commands: Commands,
+    mut rapier_config: ResMut<RapierConfiguration>,
+    asset_server: Res<AssetServer>,
+) {
     // Init. World Settings
     rapier_config.gravity = Vec2::new(0.0, -220.0);
 
@@ -72,15 +85,40 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
         )))
         .insert(PlayerCamera { follow_speed: 5.0 });
 
+    // Spawn UI Text
+    let font = asset_server.load("Vogue.ttf");
+    commands
+        .spawn_bundle(
+            TextBundle::from_section(
+                "0.0".to_string(),
+                TextStyle {
+                    font: font.clone(),
+                    font_size: 50.0,
+                    color: Color::hex("1b1b1b").unwrap(),
+                },
+            )
+            .with_style(Style {
+                align_self: AlignSelf::FlexEnd,
+                position_type: PositionType::Absolute,
+                position: UiRect {
+                    top: Val::Px(15.0),
+                    left: Val::Px(25.0),
+                    ..default()
+                },
+                ..default()
+            }),
+        )
+        .insert(TimeElapsedUI);
+
     // Spawn Player
     commands
         .spawn()
         .insert_bundle(SpriteBundle {
             sprite: Sprite {
-                color: Color::hex(PLAYER_COLOR).unwrap(),
                 custom_size: Some(Vec2::new(SPRITE_SIZE, SPRITE_SIZE)),
                 ..Default::default()
             },
+            texture: asset_server.load("PlayerTexture.png"),
             ..Default::default()
         })
         .insert(RigidBody::Dynamic)
@@ -92,6 +130,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
             movement_speed: 300.0,
             jump_force: 200.0,
             player_colliding: false,
+            facing_right: true,
         });
 
     // Spawn Initial Platform
@@ -114,7 +153,6 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
         .insert(Platform);
 
     // Spawn Additional Platforms
-    // THIS IS BROKEN ALGO. WE'LL FIX IT TOMORROW
     let mut rng = rand::thread_rng();
     for index in 1..50 {
         commands
@@ -123,8 +161,9 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
                 sprite: Sprite {
                     color: Color::hex(PLATFORM_COLOR).unwrap(),
                     custom_size: Some(Vec2::new(PLATFORM_WIDTH, PLATFORM_HEIGHT)),
-                    ..Default::default()
+                    ..default()
                 },
+                // texture: asset_server.load("PlatformTexture.png"),
                 transform: Transform::from_xyz(
                     rng.gen_range(
                         -(WINDOW_WIDTH as f32 / 2.0 - PLATFORM_WIDTH as f32)
@@ -144,7 +183,7 @@ fn spawn_world_system(mut commands: Commands, mut rapier_config: ResMut<RapierCo
     }
 }
 
-fn player_movement_system(
+fn player_input_system(
     keyboard_input: Res<Input<KeyCode>>,
     mut player_query: Query<((&mut Player, &mut Velocity), With<Player>)>,
 ) {
@@ -155,6 +194,14 @@ fn player_movement_system(
     let left = keyboard_input.pressed(KeyCode::A) || keyboard_input.pressed(KeyCode::Left);
     let right = keyboard_input.pressed(KeyCode::D) || keyboard_input.pressed(KeyCode::Right);
     let x_input = -(left as i8) + right as i8;
+
+    // Set Facing Direction for Animations
+    if right {
+        player.0.facing_right = true;
+    }
+    if left {
+        player.0.facing_right = false;
+    }
 
     // Normalize Input
     let mut player_input_dir = Vec2::new(x_input as f32, 0.0);
@@ -240,5 +287,27 @@ fn player_screen_looping_system(
         player_transform.0.translation.x = -(WINDOW_WIDTH as f32 / 2.0) + SPRITE_SIZE * 1.2;
     } else if player_transform.0.translation.x < -(WINDOW_WIDTH as f32 / 2.0) {
         player_transform.0.translation.x = WINDOW_WIDTH as f32 / 2.0 + SPRITE_SIZE / 2.0 as f32;
+    }
+}
+
+fn increment_timer_system(
+    mut text_query: Query<&mut Text, With<TimeElapsedUI>>,
+    mut time_elapsed_value: ResMut<TimeElapsedValue>,
+    time: Res<Time>,
+) {
+    let mut timer_text = text_query.single_mut();
+    time_elapsed_value.0 += time.delta_seconds();
+    timer_text.sections[0].value = (time_elapsed_value.0 as i8).to_string();
+}
+
+fn player_animation_system(mut player_query: Query<((&mut Sprite, &Player), With<Player>)>) {
+    // Get Player
+    let (mut player_sprite, _player_object) = player_query.single_mut();
+
+    // Determine if Sprite should be flipped or not
+    if player_sprite.1.facing_right == true {
+        player_sprite.0.flip_x = false;
+    } else {
+        player_sprite.0.flip_x = true;
     }
 }
