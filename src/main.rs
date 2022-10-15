@@ -73,11 +73,13 @@ fn main() {
         // Run
         .run();
 }
+
 fn initilizate_window(mut windows: ResMut<Windows>) {
     let window = windows.get_primary_mut().unwrap();
     window.set_cursor_visibility(false);
     window.set_cursor_lock_mode(true);
 }
+
 fn spawn_world_system(
     mut commands: Commands,
     mut rapier_config: ResMut<RapierConfiguration>,
