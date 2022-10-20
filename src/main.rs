@@ -198,7 +198,7 @@ fn spawn_world_system(
 
 fn player_input_system(
     keyboard_input: Res<Input<KeyCode>>,
-    mut player_query: Query<((&mut Player, &mut Velocity), With<Player>)>,
+    mut player_query: Query<((&mut Player, &mut Velocity, &mut Transform), With<Player>)>,
 ) {
     // Query Player
     let (mut player, _player_velocity) = player_query.single_mut();
@@ -233,6 +233,11 @@ fn player_input_system(
 
     if down {
         player.1.linvel.y = -player.0.jump_force * 3.0;
+    }
+
+    let respawn = keyboard_input.just_pressed(KeyCode::R);
+    if respawn == true {
+        player.2.translation = Vec3::splat(0.0);
     }
 }
 
