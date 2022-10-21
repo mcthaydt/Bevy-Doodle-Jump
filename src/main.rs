@@ -31,10 +31,21 @@ struct Player {
 struct PlayerCamera {
     follow_speed: f32,
 }
+
+#[derive(PartialEq)]
+enum PlatformType {
+    Undefined,
+    Stationary,
+    Moving,
+}
+
 #[derive(Component)]
 struct Platform {
     already_collided: bool,
+    direction: f32,
+    platform_type: PlatformType,
 }
+
 #[derive(Component)]
 struct ScoreUI;
 struct ScoreValue(i8);
@@ -55,18 +66,20 @@ fn main() {
         .insert_resource(ScoreValue(0))
         // Plugins
         .add_plugins(DefaultPlugins)
-        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(350.0))
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(450.0))
         // .add_plugin(RapierDebugRenderPlugin::default())
         // Startup Systems
-        .add_startup_system(spawn_world_system)
         .add_startup_system(initilizate_window)
+        .add_startup_system(spawn_world_system)
         // Staged Systems
         .add_system(player_input_system)
         .add_system(player_camera_follow_system)
         .add_system(update_score_system)
         .add_system(player_animation_system)
+        .add_system(platform_type_randomization_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_collision_detection_system)
         .add_system_to_stage(CoreStage::PostUpdate, player_screen_looping_system)
+        .add_system_to_stage(CoreStage::PostUpdate, platform_properties_system)
         .add_system(close_on_esc)
         // Run
         .run();
@@ -161,6 +174,8 @@ fn spawn_world_system(
         ))
         .insert(Platform {
             already_collided: false,
+            direction: 0.0,
+            platform_type: PlatformType::Stationary,
         });
 
     // Spawn Additional Platforms
@@ -192,6 +207,8 @@ fn spawn_world_system(
             ))
             .insert(Platform {
                 already_collided: false,
+                direction: 1.0,
+                platform_type: PlatformType::Undefined,
             });
     }
 }
@@ -328,4 +345,45 @@ fn player_animation_system(mut player_query: Query<((&mut Sprite, &Player), With
 fn update_score_system(mut text_query: Query<&mut Text, With<ScoreUI>>, score: Res<ScoreValue>) {
     let mut text = text_query.single_mut();
     text.sections[0].value = score.0.to_string();
+}
+
+// fn reset_game_system() {
+
+// }
+
+fn platform_properties_system(
+    mut platform_query: Query<(&mut Platform, &mut Transform), With<Platform>>,
+    time: Res<Time>,
+) {
+    let min: f32 = -(WINDOW_WIDTH as f32 / 2.0 - PLATFORM_WIDTH / 2.0 as f32);
+    let max: f32 = WINDOW_WIDTH as f32 / 2.0 - PLATFORM_WIDTH / 2.0 as f32;
+    for (mut platform_object, mut platform_transform) in platform_query.iter_mut() {
+        if platform_object.platform_type == PlatformType::Moving {
+            platform_transform.translation.x +=
+                125.0 * time.delta_seconds() * platform_object.direction;
+            if platform_transform.translation.x > max {
+                platform_transform.translation.x = max;
+                platform_object.direction = -1.0;
+            }
+            if platform_transform.translation.x < min {
+                platform_transform.translation.x = min;
+                platform_object.direction = 1.0;
+            }
+        }
+    }
+}
+
+// THIS SHOULD BE AN EVENT INSTEAD
+fn platform_type_randomization_system(
+    mut platform_query: Query<((Entity, &mut Platform), With<Platform>)>,
+) {
+    for (mut platform_entity, _platform_object) in platform_query.iter_mut() {
+        if platform_entity.1.platform_type == PlatformType::Undefined {
+            if platform_entity.0.id() % 2 == 0 && platform_entity.0.id() % 4 == 0 {
+                platform_entity.1.platform_type = PlatformType::Moving;
+            } else {
+                platform_entity.1.platform_type = PlatformType::Moving;
+            }
+        }
+    }
 }
