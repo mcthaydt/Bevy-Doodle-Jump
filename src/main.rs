@@ -377,12 +377,13 @@ fn platform_properties_system(
 fn platform_type_randomization_system(
     mut platform_query: Query<((Entity, &mut Platform), With<Platform>)>,
 ) {
+    let mut rng = rand::thread_rng();
     for (mut platform_entity, _platform_object) in platform_query.iter_mut() {
         if platform_entity.1.platform_type == PlatformType::Undefined {
-            if platform_entity.0.id() % 2 == 0 && platform_entity.0.id() % 4 == 0 {
+            if rng.gen_range(0..100) % 2 == 0 && rng.gen_range(0..100) == 0 {
                 platform_entity.1.platform_type = PlatformType::Moving;
             } else {
-                platform_entity.1.platform_type = PlatformType::Moving;
+                platform_entity.1.platform_type = PlatformType::Stationary;
             }
         }
     }
